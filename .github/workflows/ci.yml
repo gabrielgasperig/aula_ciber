@@ -9,13 +9,13 @@ on:
         type: choice
         description: 'Tipo de build'     
         required: true
-        default: 'snapshot'
+        default: 'minor'
         options:
-        - snapshot
         - patch
         - minor
         - major
-jobs:  
+
+jobs:
   GerarVersao:
     runs-on: ubuntu-latest
     outputs:
@@ -24,14 +24,12 @@ jobs:
       - name: Baixando o repositório
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository }}
-          path: build
+          fetch-depth: 0
       - name: Coleta última versão
         id: ultimatag
         uses: "WyriHaximus/github-action-get-previous-tag@v1"
         with:
-          fallback: 0.0.0
-          workingDirectory: ${{ github.workspace }}/build
+          fallback: 1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Número próximas versões
@@ -88,6 +86,24 @@ jobs:
         with:
           name: backend
           path: build/ci_cd_projeto/backend/backend.zip
+  
+  teste_back:
+    name: Teste
+    needs: [build_back]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixando o repositório
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: build
+      - name: Executar os testes automatizados
+        shell: bash
+        run: |
+          cd build/ci_cd_projeto/backend
+          npm install
+          npm run test:cov
+
   build_front:
     name: Build Front
     needs: [GerarVersao]
@@ -114,9 +130,10 @@ jobs:
         with:
           name: frontend
           path: build/ci_cd_projeto/frontend/frontend.zip
+
   empacotar:
     name: Empacotar
-    needs: [build_back, build_front, GerarVersao]
+    needs: [teste_back, build_front, GerarVersao]
     runs-on: ubuntu-latest
     steps:
      - name: Download Zip Frontend
@@ -127,15 +144,12 @@ jobs:
        uses: actions/download-artifact@v4
        with:
          name: backend
-     - name: Listar os arquivos
-       shell: bash
-       run:  ls 
      - name: Criar Versão / Release e Tag
        uses: softprops/action-gh-release@v2
        env:
          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
        with:
-         body: Release
-         tag_name: Release
+         body: Release ${{ needs.GerarVersao.outputs.versao }}
+         tag_name: ${{ needs.GerarVersao.outputs.versao }}
          fail_on_unmatched_files: true
-         files: backend.zip,frontend.zip
+         files: backend.zip, frontend.zip
